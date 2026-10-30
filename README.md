@@ -7,4 +7,4 @@ Powstała na podstawie książki Zofii Wieczorek „Z Przemyśla do Szczecina pr
 - `index.html` – cała strona (HTML, CSS i JavaScript w jednym pliku)
 - `img/` – zdjęcia z archiwum rodzinnego i z książki
 
-Kontakt z autorką: zwieczor@gmail.com
+Kontakt z autorką: zwieczor@gmail.com, tel. 513 160 613
