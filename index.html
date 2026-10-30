@@ -209,6 +209,18 @@ section{scroll-margin-top:64px}
 .quiz .bar2 span{display:block;height:100%;background:var(--red);width:0;transition:width .4s}
 .medal{font-family:var(--f-display);font-weight:800;font-size:3rem;color:var(--red);line-height:1}
 @media (max-width:820px){.cmp-wrap{grid-template-columns:minmax(0,1fr)}}
+
+/* gramofon */
+.gram{position:fixed;z-index:40;right:calc(env(safe-area-inset-right,0px) + 16px);bottom:calc(env(safe-area-inset-bottom,0px) + 16px);display:flex;align-items:center;gap:10px;background:var(--ink);color:var(--paper);padding:8px 14px 8px 8px;border-radius:40px;box-shadow:0 10px 30px -12px rgba(0,0,0,.6);font-family:var(--f-type);font-size:.85rem;max-width:calc(100vw - 32px)}
+.gram button.disc{width:44px;height:44px;border-radius:50%;border:0;cursor:pointer;flex:none;background:radial-gradient(circle,var(--red) 0 22%,#111 23% 26%,#222 27% 40%,#111 41% 44%,#2a2a2a 45% 60%,#111 61% 64%,#262626 65% 100%);position:relative}
+.gram button.disc::after{content:"▶";position:absolute;inset:0;display:grid;place-items:center;color:#fff;font-size:.8rem}
+.gram.on button.disc{animation:spin 1.8s linear infinite}
+.gram.on button.disc::after{content:"❚❚";animation:spin 1.8s linear infinite reverse}
+@keyframes spin{to{transform:rotate(360deg)}}
+.gram .txt{display:grid;line-height:1.25;min-width:0}
+.gram .txt small{opacity:.7;font-size:.72rem}
+.gram input{width:70px;accent-color:var(--red)}
+@media (max-width:520px){.gram input,.gram .txt small{display:none}}
 @media (max-width:820px){
   .hero,.route,.book{grid-template-columns:minmax(0,1fr)}
   .panel{position:static}
@@ -481,6 +493,12 @@ body{margin:0}
   <div class="wrap">Strona pamięci kaprala Adolfa Mierzwy. Zdjęcia pochodzą z archiwum rodziny i z książki Zofii Wieczorek.</div>
 </footer>
 
+<div class="gram" id="gram">
+  <button type="button" class="disc" id="gramBtn" aria-label="Włącz muzykę"></button>
+  <span class="txt"><span>Gramofon</span><small>walc w stylu lat 30.</small></span>
+  <input type="range" id="gramVol" min="0" max="100" value="60" aria-label="Głośność">
+</div>
+
 <div class="lb" id="lb" hidden>
   <button type="button" class="x" id="lbX">Zamknij ✕</button>
   <button type="button" class="nv pv" id="lbP" aria-label="Poprzednie zdjęcie">‹</button>
@@ -655,6 +673,56 @@ function renderQ(){
     box.appendChild(b)});
 }
 renderQ();
+
+// gramofon: oryginalna melodia walca w stylu lat 30., grana na żywo przez Web Audio
+const gram=document.getElementById("gram"), gBtn=document.getElementById("gramBtn"), gVol=document.getElementById("gramVol");
+let AC=null, master=null, gOn=false, nextT=0, step=0, schedTimer=null, crackle=null;
+const BEAT=60/138;
+const mf=m=>440*Math.pow(2,(m-69)/12);
+// takt: [akord, melodia jako pary [midi, ćwierćnuty]]
+const CH={Dm:[38,[53,57,62]],A7:[33,[55,61,64]],Gm:[31,[55,58,62]]};
+const BARS=[
+ ["Dm",[[69,2],[65,1]]],["Dm",[[74,2],[69,1]]],["A7",[[67,1],[65,1],[64,1]]],["A7",[[73,3]]],
+ ["A7",[[76,2],[73,1]]],["A7",[[69,2],[67,1]]],["Dm",[[65,1],[64,1],[65,1]]],["Dm",[[62,3]]],
+ ["Gm",[[70,2],[69,1]]],["Gm",[[67,2],[70,1]]],["Dm",[[69,2],[65,1]]],["Dm",[[74,3]]],
+ ["A7",[[76,1],[74,1],[73,1]]],["A7",[[73,2],[76,1]]],["Dm",[[65,1],[64,1],[62,1]]],["Dm",[[62,3]]]
+];
+function tone(t,f,dur,type,vol,cut){
+  const o=AC.createOscillator(), o2=AC.createOscillator(), g=AC.createGain(), lp=AC.createBiquadFilter();
+  o.type=o2.type=type; o.frequency.value=f; o2.frequency.value=f*1.004;
+  lp.type="lowpass"; lp.frequency.value=cut;
+  g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(vol,t+.02); g.gain.setTargetAtTime(vol*.55,t+.05,.15); g.gain.setTargetAtTime(0,t+dur*.92,.05);
+  o.connect(lp); o2.connect(lp); lp.connect(g); g.connect(master);
+  o.start(t); o2.start(t); o.stop(t+dur+.3); o2.stop(t+dur+.3);
+}
+function bar(t,b){
+  const [ch,mel]=BARS[b], [bass,chord]=CH[ch];
+  tone(t,mf(bass),BEAT*.9,"triangle",.32,900);
+  for(const k of [1,2]) chord.forEach(m=>tone(t+k*BEAT,mf(m),BEAT*.45,"square",.035,1400));
+  let x=0; mel.forEach(([m,d])=>{tone(t+x*BEAT,mf(m),d*BEAT,"sawtooth",.09,2200); x+=d});
+}
+function sched(){ while(nextT<AC.currentTime+.6){ bar(nextT,step%BARS.length); step++; nextT+=3*BEAT; } }
+function makeCrackle(){
+  const len=AC.sampleRate*2, buf=AC.createBuffer(1,len,AC.sampleRate), d=buf.getChannelData(0);
+  for(let i=0;i<len;i++){ d[i]=(Math.random()*2-1)*.012 + (Math.random()<.0007?(Math.random()*2-1)*.5:0); }
+  const src=AC.createBufferSource(); src.buffer=buf; src.loop=true;
+  const hp=AC.createBiquadFilter(); hp.type="highpass"; hp.frequency.value=1500;
+  src.connect(hp); hp.connect(master); src.start(); return src;
+}
+function gStart(){
+  try{
+    if(!AC){AC=new (window.AudioContext||window.webkitAudioContext)();
+      const hp=AC.createBiquadFilter(); hp.type="highpass"; hp.frequency.value=180;
+      const lp=AC.createBiquadFilter(); lp.type="lowpass"; lp.frequency.value=3200;
+      master=AC.createGain(); master.connect(hp); hp.connect(lp); lp.connect(AC.destination);}
+    AC.resume(); master.gain.value=gVol.value/100*.8;
+    crackle=makeCrackle(); nextT=AC.currentTime+.15; step=0; sched(); schedTimer=setInterval(sched,150);
+    gOn=true; gram.classList.add("on"); gBtn.setAttribute("aria-label","Wyłącz muzykę");
+  }catch(e){ gram.querySelector(".txt span").textContent="Dźwięk niedostępny"; }
+}
+function gStop(){ clearInterval(schedTimer); if(crackle){crackle.stop();crackle=null} if(master){master.gain.setTargetAtTime(0,AC.currentTime,.05); setTimeout(()=>{if(!gOn&&AC)AC.suspend()},300)} gOn=false; gram.classList.remove("on"); gBtn.setAttribute("aria-label","Włącz muzykę"); }
+gBtn.onclick=()=>gOn?gStop():gStart();
+gVol.oninput=()=>{ if(master&&gOn) master.gain.setTargetAtTime(gVol.value/100*.8,AC.currentTime,.05) };
 
 // poszukiwania
 const search = [
